@@ -15,9 +15,9 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 # HOME 경로 설정
 HOME = os.path.expanduser("~")
-
-CONFIG_PATH = "./groundingdino/config/GroundingDINO_SwinB_cfg.py"
-WEIGHTS_PATH = "./weights/groundingdino_swinb_cogcoor.pth"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(BASE_DIR, "groundingdino", "config", "GroundingDINO_SwinB_cfg.py")
+WEIGHTS_PATH = os.path.join(BASE_DIR, "weights", "groundingdino_swinb_cogcoor.pth")
 
 GDRIVE_FILE_ID = "1IhofLclAZhC6j64GpWGjEySWzvk6NHRa"
 GDRIVE_URL = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
