@@ -1,12 +1,13 @@
-torch
-torchvision
+torch==2.1.0
+torchvision==0.16.0
 transformers
 addict
 yapf
 timm
 numpy
 # opencv-python
-supervision>=0.22.0
+supervision==0.25.1
 pycocotools
 opencv-python-headless
 gdown
+-e git+https://github.com/IDEA-Research/GroundingDINO.git#egg=GroundingDINO
