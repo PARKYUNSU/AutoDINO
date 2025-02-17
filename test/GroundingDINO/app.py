@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import cv2
 import gdown
+import gc
 from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
@@ -72,64 +73,65 @@ if class_labels:
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
 if uploaded_file is not None:
-    # 원본 이미지 표시
-    image = Image.open(uploaded_file).convert("RGB")
-    image_array = np.array(image)
-    st.image(image_array, caption="📷 Uploaded Image", use_container_width=True)
+    try:
+        image = Image.open(uploaded_file).convert("RGB")
+        image_array = np.array(image)
+        st.image(image_array, caption="📷 Uploaded Image", use_container_width=True)
 
-    # Grounding DINO inference 수행
-    image_source, image_tensor = load_image(uploaded_file)
+        image_source, image_tensor = load_image(uploaded_file)
 
-    del image, image_array
-    
-    if apply_detection and class_labels:
-        all_boxes = []
-        all_logits = []
-        all_phrases = []
+        del image, image_array, uploaded_file
+        gc.collect()
 
-        for class_name in class_labels:
-            text_prompt = class_name
-            box_threshold = threshold_values[class_name]
-            text_threshold = 0.25  # 고정
+        if apply_detection and class_labels:
+            all_boxes = []
+            all_logits = []
+            all_phrases = []
 
-            boxes, logits, phrases = predict(
-                model=model,
-                device=device,
-                image=image_tensor,
-                caption=text_prompt,
-                box_threshold=box_threshold,
-                text_threshold=text_threshold
-            )
+            for class_name in class_labels:
+                text_prompt = class_name
+                box_threshold = threshold_values[class_name]
+                text_threshold = 0.25  # 고정
 
-            for i, phrase in enumerate(phrases):
-                if phrase.lower() == class_name.lower():
-                    all_boxes.append(boxes[i])
-                    all_logits.append(logits[i])
-                    all_phrases.append(phrase)
-        
-        if isinstance(all_boxes, list) and len(all_boxes) > 0:
-            all_boxes = torch.stack(all_boxes)
+                boxes, logits, phrases = predict(
+                    model=model,
+                    device=device,
+                    image=image_tensor,
+                    caption=text_prompt,
+                    box_threshold=box_threshold,
+                    text_threshold=text_threshold
+                )
 
-        # **탐지된 객체가 있는 경우만 표시**
-        if len(all_boxes) > 0:
-            annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
-            annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                for i, phrase in enumerate(phrases):
+                    if phrase.lower() == class_name.lower():
+                        all_boxes.append(boxes[i])
+                        all_logits.append(logits[i])
+                        all_phrases.append(phrase)
 
-            # 결과 표시
-            st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
+            if isinstance(all_boxes, list) and len(all_boxes) > 0:
+                all_boxes = torch.stack(all_boxes)
 
-            # 탐지된 객체 리스트 출력
-            st.write("### 📋 Detected Objects")
-            for i, box in enumerate(all_boxes):
-                label = all_phrases[i]
-                confidence = all_logits[i]
-                st.write(f"**{label}** - Confidence: {confidence:.2f}")
+            if len(all_boxes) > 0:
+                annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
+                annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
 
-        else:
-            st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
+                st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
 
-    elif apply_detection and not class_labels:
-        st.warning("⚠️ Please enter at least one object class to detect.")
+                st.write("### 📋 Detected Objects")
+                for i, box in enumerate(all_boxes):
+                    label = all_phrases[i]
+                    confidence = all_logits[i]
+                    st.write(f"**{label}** - Confidence: {confidence:.2f}")
+
+            else:
+                st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
+
+        elif apply_detection and not class_labels:
+            st.warning("⚠️ Please enter at least one object class to detect.")
+
+    finally:
+        del image_source, image_tensor
+        gc.collect()
 
 else:
     st.info("📌 Upload an image to start detection.")
