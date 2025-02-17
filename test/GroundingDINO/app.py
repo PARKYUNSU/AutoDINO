@@ -12,8 +12,8 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 # HOME 경로 설정
 HOME = os.path.expanduser("~")
 
-CONFIG_PATH = "/Users/parkyunsu/project/Grounding_Dino_Auto_Annotaion/test/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
-WEIGHTS_PATH = "/Users/parkyunsu/project/Grounding_Dino_Auto_Annotaion/test/GroundingDINO/weights/groundingdino_swint_ogc.pth"
+CONFIG_PATH = "./Grounding_Dino_Auto_Annotaion/test/GroundingDINO/groundingdino/config/GroundingDINO_SwinB_cfg.py"
+WEIGHTS_PATH = "./Grounding_Dino_Auto_Annotaion/test/GroundingDINO/weights/groundingdino_swinb_cogcoor.pth"
 
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"

@@ -1,1 +1,2 @@
 test/GroundingDINO/weights/groundingdino_swint_ogc.pth
+test/GroundingDINO/weights/groundingdino_swinb_cogcoor.pth
