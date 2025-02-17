@@ -74,66 +74,50 @@ if class_labels:
 
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
-def run_detection(model, device, image_tensor, class_labels, threshold_values):
-    """
-    주어진 이미지 텐서에 대해 각 클래스에 대한 검출 수행
-    """
-    all_boxes = []
-    all_logits = []
-    all_phrases = []
-    with torch.no_grad():
-        for class_name in class_labels:
-            text_prompt = class_name
-            box_threshold = threshold_values[class_name]
-            text_threshold = 0.25  # 고정 값
-            boxes, logits, phrases = predict(
-                model=model,
-                device=device,
-                image=image_tensor,
-                caption=text_prompt,
-                box_threshold=box_threshold,
-                text_threshold=text_threshold
-            )
-            for i, phrase in enumerate(phrases):
-                if phrase.lower() == class_name.lower():
-                    all_boxes.append(boxes[i])
-                    all_logits.append(logits[i])
-                    all_phrases.append(phrase)
-        if len(all_boxes) > 0:
-            all_boxes = torch.stack(all_boxes)
-    return all_boxes, all_logits, all_phrases
-
 if uploaded_file is not None:
     try:
-        # 이미지 로드 및 표시
         image = Image.open(uploaded_file).convert("RGB")
         image_array = np.array(image)
         st.image(image_array, caption="📷 Uploaded Image", use_container_width=True)
 
-        # Grounding DINO 모델이 요구하는 형식으로 이미지 로드
         image_source, image_tensor = load_image(uploaded_file)
 
-        # 사용한 이미지 변수 삭제하여 메모리 해제
-        del image, image_array
+        del image, image_array, uploaded_file
         gc.collect()
 
-        if apply_detection and class_labels:
-            all_boxes, all_logits, all_phrases = run_detection(
-                model, device, image_tensor, class_labels, threshold_values
-            )
+        all_boxes = []
+        all_logits = []
+        all_phrases = []
 
-            # image_tensor 삭제 후 메모리 정리
-            del image_tensor
-            gc.collect()
+        if apply_detection and class_labels:
+            with torch.no_grad():
+                for class_name in class_labels:
+                    text_prompt = class_name
+                    box_threshold = threshold_values[class_name]
+                    text_threshold = 0.25  # 고정 값
+
+                    boxes, logits, phrases = predict(
+                        model=model,
+                        device=device,
+                        image=image_tensor,
+                        caption=text_prompt,
+                        box_threshold=box_threshold,
+                        text_threshold=text_threshold
+                    )
+
+                    for i, phrase in enumerate(phrases):
+                        if phrase.lower() == class_name.lower():
+                            all_boxes.append(boxes[i])
+                            all_logits.append(logits[i])
+                            all_phrases.append(phrase)
+
+                if len(all_boxes) > 0:
+                    all_boxes = torch.stack(all_boxes)
 
             if len(all_boxes) > 0:
-                annotated_frame = annotate(
-                    image_source=image_source,
-                    boxes=all_boxes,
-                    logits=all_logits,
-                    phrases=all_phrases
-                )
+                annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+
                 st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
 
                 st.write("### 📋 Detected Objects")
@@ -141,21 +125,20 @@ if uploaded_file is not None:
                     label = all_phrases[i]
                     confidence = all_logits[i]
                     st.write(f"**{label}** - Confidence: {confidence:.2f}")
+
             else:
                 st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
-
-            # 검출 관련 변수들 삭제 후 메모리 정리
-            del all_boxes, all_logits, all_phrases
-            gc.collect()
 
         elif apply_detection and not class_labels:
             st.warning("⚠️ Please enter at least one object class to detect.")
 
     finally:
-        # image_source 삭제 후 메모리 정리
-        if 'image_source' in locals():
-            del image_source
+        for var_name in ["image_source", "image_tensor", "all_logits", "all_phrases", "all_boxes"]:
+            if var_name in locals():
+                del locals()[var_name]
+
         gc.collect()
+        torch.cuda.empty_cache()
 
 else:
     st.info("📌 Upload an image to start detection.")
