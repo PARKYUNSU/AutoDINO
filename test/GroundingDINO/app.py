@@ -41,7 +41,8 @@ else:
     st.success("✅ Model weights successfully downloaded!")
 
 # device = "mps" if torch.backends.mps.is_available() else "cpu"
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
 
 @st.cache_resource
 def load_dino_model():
@@ -74,71 +75,143 @@ if class_labels:
 
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
+# if uploaded_file is not None:
+#     try:
+#         image = Image.open(uploaded_file).convert("RGB")
+#         image_array = np.array(image)
+#         st.image(image_array, caption="📷 Uploaded Image", use_container_width=True)
+
+#         image_source, image_tensor = load_image(uploaded_file)
+
+#         del image, image_array, uploaded_file
+#         gc.collect()
+
+#         all_boxes = []
+#         all_logits = []
+#         all_phrases = []
+
+#         if apply_detection and class_labels:
+#             with torch.no_grad():
+#                 for class_name in class_labels:
+#                     text_prompt = class_name
+#                     box_threshold = threshold_values[class_name]
+#                     text_threshold = 0.25  # 고정 값
+
+#                     boxes, logits, phrases = predict(
+#                         model=model,
+#                         device=device,
+#                         image=image_tensor,
+#                         caption=text_prompt,
+#                         box_threshold=box_threshold,
+#                         text_threshold=text_threshold
+#                     )
+
+#                     for i, phrase in enumerate(phrases):
+#                         if phrase.lower() == class_name.lower():
+#                             all_boxes.append(boxes[i])
+#                             all_logits.append(logits[i])
+#                             all_phrases.append(phrase)
+
+#                 if len(all_boxes) > 0:
+#                     all_boxes = torch.stack(all_boxes)
+
+#             if len(all_boxes) > 0:
+#                 annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
+#                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+
+#                 st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
+
+#                 st.write("### 📋 Detected Objects")
+#                 for i, box in enumerate(all_boxes):
+#                     label = all_phrases[i]
+#                     confidence = all_logits[i]
+#                     st.write(f"**{label}** - Confidence: {confidence:.2f}")
+
+#             else:
+#                 st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
+
+#         elif apply_detection and not class_labels:
+#             st.warning("⚠️ Please enter at least one object class to detect.")
+
+#     finally:
+#         for var_name in ["image_source", "image_tensor", "all_logits", "all_phrases", "all_boxes"]:
+#             if var_name in locals():
+#                 del locals()[var_name]
+
+#         gc.collect()
+#         torch.cuda.empty_cache()
+
+# else:
+#     st.info("📌 Upload an image to start detection.")
+
+def run_detection(image_tensor, class_labels, threshold_values):
+    all_boxes = []
+    all_logits = []
+    all_phrases = []
+    with torch.no_grad():
+        for class_name in class_labels:
+            text_prompt = class_name
+            box_threshold = threshold_values[class_name]
+            text_threshold = 0.25  # 고정 값
+            boxes, logits, phrases = predict(
+                model=model,
+                device=device,
+                image=image_tensor,
+                caption=text_prompt,
+                box_threshold=box_threshold,
+                text_threshold=text_threshold
+            )
+            for i, phrase in enumerate(phrases):
+                if phrase.lower() == class_name.lower():
+                    all_boxes.append(boxes[i])
+                    all_logits.append(logits[i])
+                    all_phrases.append(phrase)
+        if all_boxes:
+            all_boxes = torch.stack(all_boxes)
+    return all_boxes, all_logits, all_phrases
+
 if uploaded_file is not None:
     try:
-        image = Image.open(uploaded_file).convert("RGB")
-        image_array = np.array(image)
-        st.image(image_array, caption="📷 Uploaded Image", use_container_width=True)
-
+        # 모델에서 요구하는 형식으로 이미지 로드 (원본 이미지는 화면에 표시하지 않음)
         image_source, image_tensor = load_image(uploaded_file)
-
-        del image, image_array, uploaded_file
+        
+        # 업로드한 파일 객체는 사용 후 바로 삭제
+        del uploaded_file
         gc.collect()
 
-        all_boxes = []
-        all_logits = []
-        all_phrases = []
-
         if apply_detection and class_labels:
-            with torch.no_grad():
-                for class_name in class_labels:
-                    text_prompt = class_name
-                    box_threshold = threshold_values[class_name]
-                    text_threshold = 0.25  # 고정 값
+            all_boxes, all_logits, all_phrases = run_detection(image_tensor, class_labels, threshold_values)
+            
+            # image_tensor 삭제로 메모리 해제
+            del image_tensor
+            gc.collect()
 
-                    boxes, logits, phrases = predict(
-                        model=model,
-                        device=device,
-                        image=image_tensor,
-                        caption=text_prompt,
-                        box_threshold=box_threshold,
-                        text_threshold=text_threshold
-                    )
-
-                    for i, phrase in enumerate(phrases):
-                        if phrase.lower() == class_name.lower():
-                            all_boxes.append(boxes[i])
-                            all_logits.append(logits[i])
-                            all_phrases.append(phrase)
-
-                if len(all_boxes) > 0:
-                    all_boxes = torch.stack(all_boxes)
-
-            if len(all_boxes) > 0:
+            if all_boxes is not None and len(all_boxes) > 0:
                 annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-
                 st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
-
+                
                 st.write("### 📋 Detected Objects")
                 for i, box in enumerate(all_boxes):
                     label = all_phrases[i]
                     confidence = all_logits[i]
                     st.write(f"**{label}** - Confidence: {confidence:.2f}")
-
             else:
                 st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
-        elif apply_detection and not class_labels:
-            st.warning("⚠️ Please enter at least one object class to detect.")
+            # 검출 관련 변수 삭제
+            del all_boxes, all_logits, all_phrases
+            gc.collect()
+        else:
+            st.info("Please enter at least one object class and click 'Apply Detection'.")
+
+        # 최종 결과물인 annotated image만 남기므로, image_source 삭제
+        del image_source
+        gc.collect()
 
     finally:
-        for var_name in ["image_source", "image_tensor", "all_logits", "all_phrases", "all_boxes"]:
-            if var_name in locals():
-                del locals()[var_name]
-
+        # 기타 변수들 및 캐시 정리
         gc.collect()
-        torch.cuda.empty_cache()
 
 else:
     st.info("📌 Upload an image to start detection.")
