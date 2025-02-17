@@ -85,11 +85,11 @@ if uploaded_file is not None:
         del image, image_array, uploaded_file
         gc.collect()
 
-        if apply_detection and class_labels:
-            all_boxes = []
-            all_logits = []
-            all_phrases = []
+        all_boxes = []
+        all_logits = []
+        all_phrases = []
 
+        if apply_detection and class_labels:
             with torch.no_grad():
                 for class_name in class_labels:
                     text_prompt = class_name
@@ -133,7 +133,10 @@ if uploaded_file is not None:
             st.warning("⚠️ Please enter at least one object class to detect.")
 
     finally:
-        del image_source, image_tensor, all_logits, all_phrases
+        for var_name in ["image_source", "image_tensor", "all_logits", "all_phrases", "all_boxes"]:
+            if var_name in locals():
+                del locals()[var_name]
+
         gc.collect()
         torch.cuda.empty_cache()
 
