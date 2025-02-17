@@ -32,7 +32,8 @@ if not os.path.exists(WEIGHTS_PATH):
 else:
     st.success("✅ Model weights successfully downloaded!")
 
-device = "mps" if torch.backends.mps.is_available() else "cpu"
+# device = "mps" if torch.backends.mps.is_available() else "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Grounding DINO 모델 로드
 model = load_model(CONFIG_PATH, WEIGHTS_PATH).to(device)
