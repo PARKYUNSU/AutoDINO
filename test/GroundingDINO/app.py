@@ -42,8 +42,14 @@ else:
 # device = "mps" if torch.backends.mps.is_available() else "cpu"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Grounding DINO 모델 로드
-model = load_model(CONFIG_PATH, WEIGHTS_PATH).to(device)
+@st.cache_resource
+def load_dino_model():
+    return load_model(CONFIG_PATH, WEIGHTS_PATH).to(device)
+
+model = load_dino_model()
+
+# # Grounding DINO 모델 로드
+# model = load_model(CONFIG_PATH, WEIGHTS_PATH).to(device)
 
 st.title("🦖 Grounding DINO Auto Labeling Tool")
 
