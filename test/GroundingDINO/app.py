@@ -1,6 +1,9 @@
+import streamlit as st
+
+# Streamlit UI 구성
+st.set_page_config(layout="wide", page_title="Grounding DINO Auto Labeling")
 import os
 import torch
-import streamlit as st
 import numpy as np
 import cv2
 import gdown
@@ -33,9 +36,6 @@ device = "mps" if torch.backends.mps.is_available() else "cpu"
 
 # Grounding DINO 모델 로드
 model = load_model(CONFIG_PATH, WEIGHTS_PATH).to(device)
-
-# Streamlit UI 구성
-st.set_page_config(layout="wide", page_title="Grounding DINO Auto Labeling")
 
 st.title("🦖 Grounding DINO Auto Labeling Tool")
 
