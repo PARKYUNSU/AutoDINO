@@ -133,7 +133,7 @@ if uploaded_file is not None:
             st.warning("⚠️ Please enter at least one object class to detect.")
 
     finally:
-        del image_source, image_tensor, all_boxes, all_logits, all_phrases
+        del image_source, image_tensor, all_logits, all_phrases
         gc.collect()
         torch.cuda.empty_cache()
 
