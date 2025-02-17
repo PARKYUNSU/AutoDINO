@@ -5,8 +5,8 @@ addict
 yapf
 timm
 numpy
-opencv-python
+# opencv-python
 supervision>=0.22.0
 pycocotools
-opencv-python
+opencv-python-headless
 gdown
