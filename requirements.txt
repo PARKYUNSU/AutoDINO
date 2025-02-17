@@ -6,7 +6,8 @@ transformers
 addict
 yapf
 timm
-numpy
+# numpy
+numpy==1.23.5
 # opencv-python
 supervision==0.25.1
 pycocotools
