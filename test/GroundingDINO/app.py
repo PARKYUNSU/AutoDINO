@@ -45,7 +45,9 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 @st.cache_resource
 def load_dino_model():
-    return load_model(CONFIG_PATH, WEIGHTS_PATH).to(device)
+    model = load_model(CONFIG_PATH, WEIGHTS_PATH).to(device)
+    model.eval()  # ✅ 평가 모드 설정 (추론 전환)
+    return model
 
 model = load_dino_model()
 
@@ -88,28 +90,29 @@ if uploaded_file is not None:
             all_logits = []
             all_phrases = []
 
-            for class_name in class_labels:
-                text_prompt = class_name
-                box_threshold = threshold_values[class_name]
-                text_threshold = 0.25  # 고정
+            with torch.no_grad():
+                for class_name in class_labels:
+                    text_prompt = class_name
+                    box_threshold = threshold_values[class_name]
+                    text_threshold = 0.25  # 고정 값
 
-                boxes, logits, phrases = predict(
-                    model=model,
-                    device=device,
-                    image=image_tensor,
-                    caption=text_prompt,
-                    box_threshold=box_threshold,
-                    text_threshold=text_threshold
-                )
+                    boxes, logits, phrases = predict(
+                        model=model,
+                        device=device,
+                        image=image_tensor,
+                        caption=text_prompt,
+                        box_threshold=box_threshold,
+                        text_threshold=text_threshold
+                    )
 
-                for i, phrase in enumerate(phrases):
-                    if phrase.lower() == class_name.lower():
-                        all_boxes.append(boxes[i])
-                        all_logits.append(logits[i])
-                        all_phrases.append(phrase)
+                    for i, phrase in enumerate(phrases):
+                        if phrase.lower() == class_name.lower():
+                            all_boxes.append(boxes[i])
+                            all_logits.append(logits[i])
+                            all_phrases.append(phrase)
 
-            if isinstance(all_boxes, list) and len(all_boxes) > 0:
-                all_boxes = torch.stack(all_boxes)
+                if len(all_boxes) > 0:
+                    all_boxes = torch.stack(all_boxes)
 
             if len(all_boxes) > 0:
                 annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
@@ -130,8 +133,9 @@ if uploaded_file is not None:
             st.warning("⚠️ Please enter at least one object class to detect.")
 
     finally:
-        del image_source, image_tensor
+        del image_source, image_tensor, all_boxes, all_logits, all_phrases
         gc.collect()
+        torch.cuda.empty_cache()
 
 else:
     st.info("📌 Upload an image to start detection.")
