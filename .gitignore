@@ -2,3 +2,4 @@ test/GroundingDINO/weights/groundingdino_swint_ogc.pth
 test/GroundingDINO/weights/groundingdino_swinb_cogcoor.pth
 test/GroundingDINO/groundingdino_swinb_cogcoor.pth
 test/GroundingDINO/weights/groundingdino_swinb_cogcoor.pthird3iyqk.part
+test/GroundingDINO/groundingdino/models/GroundingDINO/__pycache__/transformer.cpython-312.pyc

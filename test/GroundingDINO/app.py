@@ -76,150 +76,116 @@ if class_labels:
 
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
-# if uploaded_file is not None:
-#     try:
-#         image = Image.open(uploaded_file).convert("RGB")
-#         image_array = np.array(image)
-#         st.image(image_array, caption="📷 Uploaded Image", use_container_width=True)
+# 세션 상태에 업로드 파일의 bytes와 detection 결과 캐싱용 딕셔너리 초기화
+if "file_bytes" not in st.session_state:
+    st.session_state["file_bytes"] = None
+if "detection_results" not in st.session_state:
+    st.session_state["detection_results"] = {}  # { class_name: (boxes, logits, phrases) }
+if "class_thresholds" not in st.session_state:
+    st.session_state["class_thresholds"] = {}  # { class_name: threshold }
 
-#         image_source, image_tensor = load_image(uploaded_file)
-
-#         del image, image_array, uploaded_file
-#         gc.collect()
-
-#         all_boxes = []
-#         all_logits = []
-#         all_phrases = []
-
-#         if apply_detection and class_labels:
-#             with torch.no_grad():
-#                 for class_name in class_labels:
-#                     text_prompt = class_name
-#                     box_threshold = threshold_values[class_name]
-#                     text_threshold = 0.25  # 고정 값
-
-#                     boxes, logits, phrases = predict(
-#                         model=model,
-#                         device=device,
-#                         image=image_tensor,
-#                         caption=text_prompt,
-#                         box_threshold=box_threshold,
-#                         text_threshold=text_threshold
-#                     )
-
-#                     for i, phrase in enumerate(phrases):
-#                         if phrase.lower() == class_name.lower():
-#                             all_boxes.append(boxes[i])
-#                             all_logits.append(logits[i])
-#                             all_phrases.append(phrase)
-
-#                 if len(all_boxes) > 0:
-#                     all_boxes = torch.stack(all_boxes)
-
-#             if len(all_boxes) > 0:
-#                 annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
-#                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-
-#                 st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
-
-#                 st.write("### 📋 Detected Objects")
-#                 for i, box in enumerate(all_boxes):
-#                     label = all_phrases[i]
-#                     confidence = all_logits[i]
-#                     st.write(f"**{label}** - Confidence: {confidence:.2f}")
-
-#             else:
-#                 st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
-
-#         elif apply_detection and not class_labels:
-#             st.warning("⚠️ Please enter at least one object class to detect.")
-
-#     finally:
-#         for var_name in ["image_source", "image_tensor", "all_logits", "all_phrases", "all_boxes"]:
-#             if var_name in locals():
-#                 del locals()[var_name]
-
-#         gc.collect()
-#         torch.cuda.empty_cache()
-
-# else:
-#     st.info("📌 Upload an image to start detection.")
-
-def run_detection(image_tensor, class_labels, threshold_values):
-    """주어진 이미지 텐서에 대해 각 클래스에 대해 객체 검출 수행"""
-    all_boxes = []
-    all_logits = []
-    all_phrases = []
-    with torch.no_grad():
-        for class_name in class_labels:
-            text_prompt = class_name
-            box_threshold = threshold_values[class_name]
-            text_threshold = 0.25  # 고정 값
-            boxes, logits, phrases = predict(
-                model=model,
-                device=device,
-                image=image_tensor,
-                caption=text_prompt,
-                box_threshold=box_threshold,
-                text_threshold=text_threshold
-            )
-            for i, phrase in enumerate(phrases):
-                if phrase.lower() == class_name.lower():
-                    all_boxes.append(boxes[i])
-                    all_logits.append(logits[i])
-                    all_phrases.append(phrase)
-        if all_boxes:
-            all_boxes = torch.stack(all_boxes)
-    return all_boxes, all_logits, all_phrases
-
+# 업로드된 파일이 있을 경우: 파일 bytes를 세션에 저장(한번 저장되면 유지)
 if uploaded_file is not None:
-    # 파일의 바이너리 데이터를 읽어 BytesIO 객체 생성
-    file_bytes = uploaded_file.read()
-    file_buffer = io.BytesIO(file_bytes)
-
-    # 원본 이미지를 PIL로 열어서 보여주기 (아직 detection 전)
-    original_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-    if not apply_detection:
-        st.image(original_image, caption="📷 Uploaded Image", use_container_width=True)
-
-    # detection 실행 시 원본 이미지 대신 annotated 결과를 보여줌
-    if apply_detection and class_labels:
-        # detection을 위해 load_image를 사용 (BytesIO 객체 사용)
-        image_source, image_tensor = load_image(io.BytesIO(file_bytes))
-        
-        # 불필요한 BytesIO 객체는 삭제
-        del file_buffer
-        gc.collect()
-
-        all_boxes, all_logits, all_phrases = run_detection(image_tensor, class_labels, threshold_values)
-        
-        # image_tensor 해제
-        del image_tensor
-        gc.collect()
-
-        if all_boxes is not None and len(all_boxes) > 0:
-            annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
-            annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-            st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
-
-            st.write("### 📋 Detected Objects")
-            for i, box in enumerate(all_boxes):
-                label = all_phrases[i]
-                confidence = all_logits[i]
-                st.write(f"**{label}** - Confidence: {confidence:.2f}")
-        else:
-            st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
-
-        # detection 관련 객체 해제
-        del all_boxes, all_logits, all_phrases, image_source
-        gc.collect()
+    # 파일이 새로 업로드되었거나 세션에 저장된 값이 없으면 업데이트
+    if st.session_state["file_bytes"] is None:
+        st.session_state["file_bytes"] = uploaded_file.read()
     else:
-        # detection이 실행되지 않은 경우, 원본 이미지를 계속 유지
-        st.info("Enter object classes and click 'Apply Detection' to see detection results.")
+        # 업로드 위젯은 매번 새 파일 객체를 반환하므로, 
+        # 파일이 업로드되어 있다면 세션에 저장된 파일을 계속 사용함.
+        pass
 
-    if apply_detection:
-        del original_image
+if st.session_state["file_bytes"] is not None:
+    try:
+        # 세션에 저장된 파일 bytes를 이용해 원본 이미지를 로드
+        original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
+        original_array = np.array(original_image)
+        
+        # detection 실행 전에는 원본 이미지를 보여줌
+        if not apply_detection:
+            st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
+        
+        # 모델 입력용 이미지 로드 (이미지 source, image tensor)
+        image_source, image_tensor = load_image(io.BytesIO(st.session_state["file_bytes"]))
         gc.collect()
+
+        all_boxes = []
+        all_logits = []
+        all_phrases = []
+
+        if apply_detection and class_labels:
+            with torch.no_grad():
+                for class_name in class_labels:
+                    current_threshold = threshold_values[class_name]
+                    
+                    # 기존에 저장된 결과와 threshold가 동일하면 재사용
+                    if (class_name in st.session_state["detection_results"] and
+                        st.session_state["class_thresholds"].get(class_name) == current_threshold):
+                        boxes, logits, phrases = st.session_state["detection_results"][class_name]
+                    else:
+                        # 해당 클래스에 대해 새로 detection 실행
+                        boxes, logits, phrases = predict(
+                            model=model,
+                            device=device,
+                            image=image_tensor,
+                            caption=class_name,
+                            box_threshold=current_threshold,
+                            text_threshold=0.25  # 고정 값
+                        )
+                        # 클래스 이름과 일치하는 결과만 필터링
+                        filtered_boxes = []
+                        filtered_logits = []
+                        filtered_phrases = []
+                        for i, phrase in enumerate(phrases):
+                            if phrase.lower() == class_name.lower():
+                                filtered_boxes.append(boxes[i])
+                                filtered_logits.append(logits[i])
+                                filtered_phrases.append(phrase)
+                        if filtered_boxes:
+                            filtered_boxes = torch.stack(filtered_boxes)
+                        boxes, logits, phrases = filtered_boxes, filtered_logits, filtered_phrases
+                        # 결과와 현재 threshold를 세션에 저장
+                        st.session_state["detection_results"][class_name] = (boxes, logits, phrases)
+                        st.session_state["class_thresholds"][class_name] = current_threshold
+
+                    # 결과가 존재하면 전체 결과에 추가
+                    if boxes is not None and len(boxes) > 0:
+                        all_boxes.append(boxes)
+                        all_logits.extend(logits)
+                        all_phrases.extend(phrases)
+
+                # 모든 클래스 결과 합치기
+                if all_boxes:
+                    all_boxes = torch.cat(all_boxes)
+                    
+            if all_boxes is not None and len(all_boxes) > 0:
+                annotated_frame = annotate(
+                    image_source=image_source,
+                    boxes=all_boxes,
+                    logits=all_logits,
+                    phrases=all_phrases
+                )
+                annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                
+                # detection 결과만 보여줌 (원본 이미지는 더 이상 보이지 않음)
+                st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
+                
+                st.write("### 📋 Detected Objects")
+                for i, box in enumerate(all_boxes):
+                    label = all_phrases[i]
+                    confidence = all_logits[i]
+                    st.write(f"**{label}** - Confidence: {confidence:.2f}")
+            else:
+                st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
+
+        elif apply_detection and not class_labels:
+            st.warning("⚠️ Please enter at least one object class to detect.")
+
+    finally:
+        for var_name in ["image_source", "image_tensor"]:
+            if var_name in locals():
+                del locals()[var_name]
+        gc.collect()
+        torch.cuda.empty_cache()
 
 else:
     st.info("📌 Upload an image to start detection.")
