@@ -3,7 +3,6 @@ import streamlit as st
 # Streamlit UI 구성
 st.set_page_config(layout="wide", page_title="Grounding DINO Auto Labeling")
 import os
-os.system("apt-get update && apt-get install -y libgl1-mesa-glx")
 import torch
 import numpy as np
 import cv2
