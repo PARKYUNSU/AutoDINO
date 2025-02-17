@@ -21,8 +21,13 @@ GDRIVE_URL = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
 
 if not os.path.exists(WEIGHTS_PATH):
     st.warning("⏳ Downloading model weights... (This may take a few minutes)")
-    os.makedirs(os.path.dirname(WEIGHTS_PATH), exist_ok=True)  # 디렉토리 생성
+    os.makedirs(os.path.dirname(WEIGHTS_PATH), exist_ok=True)
     gdown.download(GDRIVE_URL, WEIGHTS_PATH, quiet=False)
+
+if not os.path.exists(WEIGHTS_PATH):
+    st.error("❌ Model weights failed to download!")
+else:
+    st.success("✅ Model weights successfully downloaded!")
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 
