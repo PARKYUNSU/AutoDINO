@@ -145,6 +145,7 @@ apply_detection = st.sidebar.button("🚀 Apply Detection")
 #     st.info("📌 Upload an image to start detection.")
 
 def run_detection(image_tensor, class_labels, threshold_values):
+    """주어진 이미지 텐서에 대해 각 클래스에 대해 객체 검출 수행"""
     all_boxes = []
     all_logits = []
     all_phrases = []
@@ -171,46 +172,52 @@ def run_detection(image_tensor, class_labels, threshold_values):
     return all_boxes, all_logits, all_phrases
 
 if uploaded_file is not None:
-    try:
-        # 모델에서 요구하는 형식으로 이미지 로드 (원본 이미지는 화면에 표시하지 않음)
-        image_source, image_tensor = load_image(uploaded_file)
+    # 파일의 바이너리 데이터를 읽어 BytesIO 객체 생성
+    file_bytes = uploaded_file.read()
+    file_buffer = io.BytesIO(file_bytes)
+
+    # 원본 이미지를 PIL로 열어서 보여주기 (아직 detection 전)
+    original_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+    if not apply_detection:
+        st.image(original_image, caption="📷 Uploaded Image", use_container_width=True)
+
+    # detection 실행 시 원본 이미지 대신 annotated 결과를 보여줌
+    if apply_detection and class_labels:
+        # detection을 위해 load_image를 사용 (BytesIO 객체 사용)
+        image_source, image_tensor = load_image(io.BytesIO(file_bytes))
         
-        # 업로드한 파일 객체는 사용 후 바로 삭제
-        del uploaded_file
+        # 불필요한 BytesIO 객체는 삭제
+        del file_buffer
         gc.collect()
 
-        if apply_detection and class_labels:
-            all_boxes, all_logits, all_phrases = run_detection(image_tensor, class_labels, threshold_values)
-            
-            # image_tensor 삭제로 메모리 해제
-            del image_tensor
-            gc.collect()
+        all_boxes, all_logits, all_phrases = run_detection(image_tensor, class_labels, threshold_values)
+        
+        # image_tensor 해제
+        del image_tensor
+        gc.collect()
 
-            if all_boxes is not None and len(all_boxes) > 0:
-                annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
-                annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
-                
-                st.write("### 📋 Detected Objects")
-                for i, box in enumerate(all_boxes):
-                    label = all_phrases[i]
-                    confidence = all_logits[i]
-                    st.write(f"**{label}** - Confidence: {confidence:.2f}")
-            else:
-                st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
+        if all_boxes is not None and len(all_boxes) > 0:
+            annotated_frame = annotate(image_source=image_source, boxes=all_boxes, logits=all_logits, phrases=all_phrases)
+            annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+            st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
 
-            # 검출 관련 변수 삭제
-            del all_boxes, all_logits, all_phrases
-            gc.collect()
+            st.write("### 📋 Detected Objects")
+            for i, box in enumerate(all_boxes):
+                label = all_phrases[i]
+                confidence = all_logits[i]
+                st.write(f"**{label}** - Confidence: {confidence:.2f}")
         else:
-            st.info("Please enter at least one object class and click 'Apply Detection'.")
+            st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
-        # 최종 결과물인 annotated image만 남기므로, image_source 삭제
-        del image_source
+        # detection 관련 객체 해제
+        del all_boxes, all_logits, all_phrases, image_source
         gc.collect()
+    else:
+        # detection이 실행되지 않은 경우, 원본 이미지를 계속 유지
+        st.info("Enter object classes and click 'Apply Detection' to see detection results.")
 
-    finally:
-        # 기타 변수들 및 캐시 정리
+    if apply_detection:
+        del original_image
         gc.collect()
 
 else:
