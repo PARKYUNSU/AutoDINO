@@ -3,6 +3,7 @@ import torch
 import streamlit as st
 import numpy as np
 import cv2
+import gdown
 from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
@@ -14,6 +15,14 @@ HOME = os.path.expanduser("~")
 
 CONFIG_PATH = "./groundingdino/config/GroundingDINO_SwinB_cfg.py"
 WEIGHTS_PATH = "./weights/groundingdino_swinb_cogcoor.pth"
+
+GDRIVE_FILE_ID = "1IhofLclAZhC6j64GpWGjEySWzvk6NHRa"
+GDRIVE_URL = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
+
+if not os.path.exists(WEIGHTS_PATH):
+    st.warning("⏳ Downloading model weights... (This may take a few minutes)")
+    os.makedirs(os.path.dirname(WEIGHTS_PATH), exist_ok=True)  # 디렉토리 생성
+    gdown.download(GDRIVE_URL, WEIGHTS_PATH, quiet=False)
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 
