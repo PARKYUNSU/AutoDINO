@@ -8,6 +8,7 @@ import numpy as np
 import cv2
 import gdown
 import gc
+import io
 from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
