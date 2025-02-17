@@ -581,6 +581,7 @@ class TransformerEncoder(nn.Module):
                     spatial_shapes,
                     level_start_index,
                     key_padding_mask,
+                    use_reentrant=False
                 )
             else:
                 output = layer(

@@ -80,6 +80,8 @@ if uploaded_file is not None:
     # Grounding DINO inference 수행
     image_source, image_tensor = load_image(uploaded_file)
 
+    del image, image_array
+    
     if apply_detection and class_labels:
         all_boxes = []
         all_logits = []
