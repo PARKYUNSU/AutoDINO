@@ -12,6 +12,16 @@ import io
 from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
+def yolo_to_txt(boxes, phrases, class_names):
+    yolo_data = []
+    for idx, box in enumerate(boxes):
+        class_name = phrases[idx]
+        class_id = class_names.index(class_name) if class_name in class_names else -1
+        if class_id != -1:
+            x_center, y_center, width, height = map(float, box)
+            yolo_data.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+    return yolo_data
+
 # 환경 설정
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
