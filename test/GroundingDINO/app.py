@@ -86,7 +86,6 @@ if class_labels:
 
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
-# 세션 상태에 업로드 파일의 bytes와 detection 결과 캐싱용 딕셔너리 초기화
 if "file_bytes" not in st.session_state:
     st.session_state["file_bytes"] = None
 if "file_name" not in st.session_state:
@@ -95,36 +94,39 @@ if "detection_results" not in st.session_state:
     st.session_state["detection_results"] = {}  # { class_name: (boxes, logits, phrases) }
 if "class_thresholds" not in st.session_state:
     st.session_state["class_thresholds"] = {}  # { class_name: threshold }
+if "annotated_frame" not in st.session_state:
+    st.session_state["annotated_frame"] = None
+if "all_boxes" not in st.session_state:
+    st.session_state["all_boxes"] = None
+if "all_logits" not in st.session_state:
+    st.session_state["all_logits"] = None
+if "all_phrases" not in st.session_state:
+    st.session_state["all_phrases"] = None
 
-# 업로드된 파일이 있을 경우: 파일 bytes를 세션에 저장(한번 저장되면 유지)
+# 업로드된 파일이 있으면 파일 bytes와 이름을 세션에 저장 (한번 저장되면 유지)
 if uploaded_file is not None:
     if st.session_state["file_bytes"] is None:
         st.session_state["file_bytes"] = uploaded_file.read()
         st.session_state["file_name"] = uploaded_file.name
-    else:
-        # 업로드 위젯은 매번 새 파일 객체를 반환하므로, 
-        # 파일이 업로드되어 있다면 세션에 저장된 파일을 계속 사용함.
-        pass
 
 if st.session_state["file_bytes"] is not None:
     try:
-        # 세션에 저장된 파일 bytes를 이용해 원본 이미지를 로드
+        # 세션에 저장된 파일 bytes로 원본 이미지 로드
         original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
         original_array = np.array(original_image)
         
-        # detection 실행 전에는 원본 이미지를 보여줌
-        if not apply_detection:
+        # detection 실행 전에는, 만약 detection 결과가 없다면 원본 이미지를 보여줌
+        if not apply_detection and st.session_state["annotated_frame"] is None:
             st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
         # 모델 입력용 이미지 로드 (image_source, image_tensor)
         image_source, image_tensor = load_image(io.BytesIO(st.session_state["file_bytes"]))
         gc.collect()
 
-        all_boxes = []
-        all_logits = []
-        all_phrases = []
-
         if apply_detection and class_labels:
+            all_boxes = []
+            all_logits = []
+            all_phrases = []
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
@@ -163,12 +165,11 @@ if st.session_state["file_bytes"] is not None:
                     if boxes is not None and len(boxes) > 0:
                         all_boxes.append(boxes)
                         all_logits.extend(logits)
-                        all_phrases.extend(filtered_phrases if 'filtered_phrases' in locals() else phrases)
-
+                        all_phrases.extend(phrases)
                 # 모든 클래스 결과 합치기
                 if all_boxes:
                     all_boxes = torch.cat(all_boxes)
-                    
+            
             if all_boxes is not None and len(all_boxes) > 0:
                 annotated_frame = annotate(
                     image_source=image_source,
@@ -177,32 +178,32 @@ if st.session_state["file_bytes"] is not None:
                     phrases=all_phrases
                 )
                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                
-                # detection 결과만 보여줌 (원본 이미지는 더 이상 보이지 않음)
-                st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
-                
-                st.write("### 📋 Detected Objects")
-                for i, box in enumerate(all_boxes):
-                    label = all_phrases[i]
-                    confidence = all_logits[i]
-                    st.write(f"**{label}** - Confidence: {confidence:.2f}")
-
-                boxes_list = all_boxes.tolist()  # 각 box는 [x_center, y_center, width, height]여야 함
-                yolo_lines = yolo_to_txt(boxes_list, all_phrases, class_labels)
-                yolo_text = "\n".join(yolo_lines)
-                file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
-                txt_file_name = f"{os.path.splitext(file_name)[0]}.txt"
-                st.download_button(
-                    label="Download YOLO Labels",
-                    data=yolo_text,
-                    file_name=txt_file_name,
-                    mime="text/plain"
-                )                
-            else:
-                st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
-
-        elif apply_detection and not class_labels:
-            st.warning("⚠️ Please enter at least one object class to detect.")
+                st.session_state["annotated_frame"] = annotated_frame
+                st.session_state["all_boxes"] = all_boxes
+                st.session_state["all_logits"] = all_logits
+                st.session_state["all_phrases"] = all_phrases
+        # detection 결과가 이미 세션에 있으면 그대로 사용하여 표시
+        if st.session_state["annotated_frame"] is not None:
+            st.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
+            st.write("### 📋 Detected Objects")
+            for i, box in enumerate(st.session_state["all_boxes"].tolist()):
+                label = st.session_state["all_phrases"][i]
+                confidence = st.session_state["all_logits"][i]
+                st.write(f"**{label}** - Confidence: {confidence:.2f}")
+            boxes_list = st.session_state["all_boxes"].tolist()  # 각 box는 [x_center, y_center, width, height]여야 함
+            yolo_lines = yolo_to_txt(boxes_list, st.session_state["all_phrases"], class_labels)
+            yolo_text = "\n".join(yolo_lines)
+            file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
+            txt_file_name = f"{os.path.splitext(file_name)[0]}.txt"
+            st.download_button(
+                label="Download YOLO Labels",
+                data=yolo_text,
+                file_name=txt_file_name,
+                mime="text/plain"
+            )
+        else:
+            # 만약 detection 결과가 없다면 경고 메시지 표시
+            st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
     finally:
         for var_name in ["image_source", "image_tensor"]:
