@@ -87,7 +87,7 @@ if class_labels:
             f"🔍 {class_name} Confidence Threshold",
             min_value=0.1, max_value=0.95, value=0.5, step=0.05
         )
-apply_detection = st.sidebar.button("🚀 Apply Detection")
+apply_detection = st.sidebar.button("🚀 Apply Detection", key="apply_detection")
 
 # 세션 상태 초기화 (필요한 키들)
 for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds"]:
@@ -118,7 +118,7 @@ if st.session_state["file_bytes"] is not None:
         resized_image = resize_image(original_image.copy(), max_size=(800,800))
         original_array = np.array(resized_image)
         
-        # detection 전에는 원본(축소된) 이미지 표시
+        # detection 전에는 원본(축소된) 이미지를 표시
         if not apply_detection and st.session_state["annotated_frame"] is None:
             image_placeholder.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
@@ -129,24 +129,16 @@ if st.session_state["file_bytes"] is not None:
         image_source, image_tensor = load_image(buffer)
         gc.collect()
         
-        # "Apply Detection" 버튼이 눌리면 캐시 초기화 후 detection 수행
+        # "Apply Detection" 버튼이 눌리면 새 detection 결과를 계산 (하지만 기존 결과는 그대로 유지됨)
         if apply_detection:
-            st.session_state["annotated_frame"] = None
-            st.session_state["all_boxes"] = None
-            st.session_state["all_logits"] = None
-            st.session_state["all_phrases"] = None
-            st.session_state["detection_results"] = {}
-            st.session_state["class_thresholds"] = {}
-        
-        # detection 수행 (결과가 없으면)
-        if apply_detection or st.session_state["annotated_frame"] is None:
+            # (기존 detection 결과는 삭제하지 않고, 새 결과를 새로 계산하여 덮어씁니다)
             all_boxes = []
             all_logits = []
             all_phrases = []
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
-                    # 캐싱: 만약 기존 결과가 있고 임계값이 동일하면 재사용
+                    # 만약 이전 결과가 있고, 임계값이 동일하면 재사용
                     if (st.session_state["detection_results"] is not None and 
                         class_name in st.session_state["detection_results"] and 
                         st.session_state["class_thresholds"].get(class_name) == current_threshold):
@@ -187,6 +179,7 @@ if st.session_state["file_bytes"] is not None:
                     phrases=all_phrases
                 )
                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                # 업데이트된 detection 결과로 세션 상태 갱신
                 st.session_state["annotated_frame"] = annotated_frame
                 st.session_state["all_boxes"] = all_boxes.cpu().numpy()
                 st.session_state["all_logits"] = [float(x) for x in all_logits]
@@ -194,7 +187,7 @@ if st.session_state["file_bytes"] is not None:
             del image_tensor
             gc.collect()
         
-        # detection 결과가 준비되면 placeholder 업데이트 (원본 이미지 교체)
+        # detection 결과가 준비되면 placeholder 업데이트
         if st.session_state["annotated_frame"] is not None:
             image_placeholder.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
             st.write("### 📋 Detected Objects")
