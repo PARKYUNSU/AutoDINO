@@ -87,25 +87,27 @@ if class_labels:
             f"🔍 {class_name} Confidence Threshold",
             min_value=0.1, max_value=0.95, value=0.5, step=0.05
         )
-if st.sidebar.button("Clear Cache and Apply Detection"):
-    for key in ["annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds"]:
-        st.session_state[key] = None
-        
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
-for key in ["file_bytes", "file_name"]:
+# 세션 상태 초기화 (필요한 키들)
+for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
+# 새 파일 업로드 시 캐시 재설정
 if uploaded_file is not None:
     new_bytes = uploaded_file.getvalue()
     if st.session_state["file_bytes"] != new_bytes:
         st.session_state["file_bytes"] = new_bytes
         st.session_state["file_name"] = uploaded_file.name
-        for key in ["annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds"]:
-            st.session_state[key] = None
+        st.session_state["annotated_frame"] = None
+        st.session_state["all_boxes"] = None
+        st.session_state["all_logits"] = None
+        st.session_state["all_phrases"] = None
+        st.session_state["detection_results"] = {}
+        st.session_state["class_thresholds"] = {}
 
-# 원본 이미지와 결과를 표시할 placeholder 생성
+# 결과 표시를 위한 placeholder 생성
 image_placeholder = st.empty()
 
 # 객체 검출 및 결과 출력
@@ -115,6 +117,7 @@ if st.session_state["file_bytes"] is not None:
         original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
         resized_image = resize_image(original_image.copy(), max_size=(800,800))
         original_array = np.array(resized_image)
+        
         # detection 전에는 원본(축소된) 이미지 표시
         if not apply_detection and st.session_state["annotated_frame"] is None:
             image_placeholder.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
@@ -126,7 +129,16 @@ if st.session_state["file_bytes"] is not None:
         image_source, image_tensor = load_image(buffer)
         gc.collect()
         
-        # detection 수행 (Apply Detection 버튼 클릭 시 또는 결과가 없으면)
+        # "Apply Detection" 버튼이 눌리면 캐시 초기화 후 detection 수행
+        if apply_detection:
+            st.session_state["annotated_frame"] = None
+            st.session_state["all_boxes"] = None
+            st.session_state["all_logits"] = None
+            st.session_state["all_phrases"] = None
+            st.session_state["detection_results"] = {}
+            st.session_state["class_thresholds"] = {}
+        
+        # detection 수행 (결과가 없으면)
         if apply_detection or st.session_state["annotated_frame"] is None:
             all_boxes = []
             all_logits = []
@@ -134,7 +146,7 @@ if st.session_state["file_bytes"] is not None:
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
-                    # 캐싱: 만약 캐시가 존재하고 임계값이 동일하면 재사용
+                    # 캐싱: 만약 기존 결과가 있고 임계값이 동일하면 재사용
                     if (st.session_state["detection_results"] is not None and 
                         class_name in st.session_state["detection_results"] and 
                         st.session_state["class_thresholds"].get(class_name) == current_threshold):
