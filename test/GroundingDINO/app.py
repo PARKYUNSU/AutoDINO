@@ -87,10 +87,13 @@ if class_labels:
             f"🔍 {class_name} Confidence Threshold",
             min_value=0.1, max_value=0.95, value=0.5, step=0.05
         )
-apply_detection = st.sidebar.button("🚀 Apply Detection", key="apply_detection")
+if st.sidebar.button("🚀 Apply Detection", key="apply_detection"):
+    st.session_state["detection_trigger"] = True
+if "detection_trigger" not in st.session_state:
+    st.session_state["detection_trigger"] = False
 
 # 세션 상태 초기화 (필요한 키들)
-for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds"]:
+for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds", "threshold_values"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -106,6 +109,12 @@ if uploaded_file is not None:
         st.session_state["all_phrases"] = None
         st.session_state["detection_results"] = {}
         st.session_state["class_thresholds"] = {}
+        # detection_trigger remains as is until button pressed
+
+# 버튼이 눌렸을 때 현재 슬라이더 값을 effective threshold로 저장
+if st.session_state["detection_trigger"]:
+    st.session_state["threshold_values"] = threshold_values
+effective_thresholds = st.session_state.get("threshold_values", threshold_values)
 
 # 결과 표시를 위한 placeholder 생성
 image_placeholder = st.empty()
@@ -118,8 +127,8 @@ if st.session_state["file_bytes"] is not None:
         resized_image = resize_image(original_image.copy(), max_size=(800,800))
         original_array = np.array(resized_image)
         
-        # detection 전에는 원본(축소된) 이미지를 표시
-        if not apply_detection and st.session_state["annotated_frame"] is None:
+        # detection 결과가 없으면 원본 이미지를 표시 (placeholder 유지)
+        if st.session_state["annotated_frame"] is None:
             image_placeholder.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
         # 모델 입력용 이미지 생성: 축소된 이미지를 사용
@@ -129,61 +138,61 @@ if st.session_state["file_bytes"] is not None:
         image_source, image_tensor = load_image(buffer)
         gc.collect()
         
-        # "Apply Detection" 버튼이 눌리면 새 detection 결과를 계산 (하지만 기존 결과는 그대로 유지됨)
-        if apply_detection:
-            # (기존 detection 결과는 삭제하지 않고, 새 결과를 새로 계산하여 덮어씁니다)
-            all_boxes = []
-            all_logits = []
-            all_phrases = []
-            with torch.no_grad():
-                for class_name in class_labels:
-                    current_threshold = threshold_values[class_name]
-                    # 만약 이전 결과가 있고, 임계값이 동일하면 재사용
-                    if (st.session_state["detection_results"] is not None and 
-                        class_name in st.session_state["detection_results"] and 
-                        st.session_state["class_thresholds"].get(class_name) == current_threshold):
-                        boxes, logits, phrases = st.session_state["detection_results"][class_name]
-                    else:
-                        boxes, logits, phrases = predict(
-                            model=model,
-                            device=device,
-                            image=image_tensor,
-                            caption=class_name,
-                            box_threshold=current_threshold,
-                            text_threshold=0.25
-                        )
-                        filtered_boxes = []
-                        filtered_logits = []
-                        filtered_phrases = []
-                        for i, phrase in enumerate(phrases):
-                            if phrase.lower() == class_name.lower():
-                                filtered_boxes.append(boxes[i])
-                                filtered_logits.append(logits[i])
-                                filtered_phrases.append(phrase)
-                        if filtered_boxes:
-                            filtered_boxes = torch.stack(filtered_boxes)
-                        boxes, logits, phrases = filtered_boxes, filtered_logits, filtered_phrases
-                        st.session_state["detection_results"][class_name] = (boxes, logits, phrases)
-                        st.session_state["class_thresholds"][class_name] = current_threshold
-                    if boxes is not None and len(boxes) > 0:
-                        all_boxes.append(boxes)
-                        all_logits.extend(logits)
-                        all_phrases.extend(phrases)
-            if all_boxes:
-                all_boxes = torch.cat(all_boxes)
-            if all_boxes is not None and len(all_boxes) > 0:
-                annotated_frame = annotate(
-                    image_source=image_source,
-                    boxes=all_boxes,
-                    logits=all_logits,
-                    phrases=all_phrases
-                )
-                annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                # 업데이트된 detection 결과로 세션 상태 갱신
-                st.session_state["annotated_frame"] = annotated_frame
-                st.session_state["all_boxes"] = all_boxes.cpu().numpy()
-                st.session_state["all_logits"] = [float(x) for x in all_logits]
-                st.session_state["all_phrases"] = all_phrases
+        # detection 수행: "Apply Detection" 버튼이 눌렸을 때만 새 detection 실행
+        if st.session_state["detection_trigger"]:
+            with st.spinner("Running detection..."):
+                all_boxes = []
+                all_logits = []
+                all_phrases = []
+                with torch.no_grad():
+                    for class_name in class_labels:
+                        current_threshold = effective_thresholds[class_name]
+                        if (st.session_state["detection_results"] is not None and 
+                            class_name in st.session_state["detection_results"] and 
+                            st.session_state["class_thresholds"].get(class_name) == current_threshold):
+                            boxes, logits, phrases = st.session_state["detection_results"][class_name]
+                        else:
+                            boxes, logits, phrases = predict(
+                                model=model,
+                                device=device,
+                                image=image_tensor,
+                                caption=class_name,
+                                box_threshold=current_threshold,
+                                text_threshold=0.25
+                            )
+                            filtered_boxes = []
+                            filtered_logits = []
+                            filtered_phrases = []
+                            for i, phrase in enumerate(phrases):
+                                if phrase.lower() == class_name.lower():
+                                    filtered_boxes.append(boxes[i])
+                                    filtered_logits.append(logits[i])
+                                    filtered_phrases.append(phrase)
+                            if filtered_boxes:
+                                filtered_boxes = torch.stack(filtered_boxes)
+                            boxes, logits, phrases = filtered_boxes, filtered_logits, filtered_phrases
+                            st.session_state["detection_results"][class_name] = (boxes, logits, phrases)
+                            st.session_state["class_thresholds"][class_name] = current_threshold
+                        if boxes is not None and len(boxes) > 0:
+                            all_boxes.append(boxes)
+                            all_logits.extend(logits)
+                            all_phrases.extend(phrases)
+                if all_boxes:
+                    all_boxes = torch.cat(all_boxes)
+                if all_boxes is not None and len(all_boxes) > 0:
+                    annotated_frame = annotate(
+                        image_source=image_source,
+                        boxes=all_boxes,
+                        logits=all_logits,
+                        phrases=all_phrases
+                    )
+                    annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                    st.session_state["annotated_frame"] = annotated_frame
+                    st.session_state["all_boxes"] = all_boxes.cpu().numpy()
+                    st.session_state["all_logits"] = [float(x) for x in all_logits]
+                    st.session_state["all_phrases"] = all_phrases
+            # detection 완료 후, detection_trigger를 False로 리셋
+            st.session_state["detection_trigger"] = False
             del image_tensor
             gc.collect()
         
