@@ -91,7 +91,7 @@ if class_labels:
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
 # 세션 상태 초기화 (필요한 키들)
-for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logits", "all_phrases"]:
+for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -105,6 +105,8 @@ if uploaded_file is not None:
         st.session_state["all_boxes"] = None
         st.session_state["all_logits"] = None
         st.session_state["all_phrases"] = None
+        st.session_state["detection_results"] = {}
+        st.session_state["class_thresholds"] = {}
 
 # 객체 검출 및 결과 출력
 if st.session_state["file_bytes"] is not None:
@@ -130,27 +132,38 @@ if st.session_state["file_bytes"] is not None:
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
-                    boxes, logits, phrases = predict(
-                        model=model,
-                        device=device,
-                        image=image_tensor,
-                        caption=class_name,
-                        box_threshold=current_threshold,
-                        text_threshold=0.25
-                    )
-                    filtered_boxes = []
-                    filtered_logits = []
-                    filtered_phrases = []
-                    for i, phrase in enumerate(phrases):
-                        if phrase.lower() == class_name.lower():
-                            filtered_boxes.append(boxes[i])
-                            filtered_logits.append(logits[i])
-                            filtered_phrases.append(phrase)
-                    if filtered_boxes:
-                        filtered_boxes = torch.stack(filtered_boxes)
-                        all_boxes.append(filtered_boxes)
-                        all_logits.extend(filtered_logits)
-                        all_phrases.extend(filtered_phrases)
+                    # 캐싱: 기존 결과가 있고 임계값이 동일하면 재사용
+                    if (st.session_state["detection_results"] is not None and 
+                        class_name in st.session_state["detection_results"] and 
+                        st.session_state["class_thresholds"].get(class_name) == current_threshold):
+                        boxes, logits, phrases = st.session_state["detection_results"][class_name]
+                    else:
+                        boxes, logits, phrases = predict(
+                            model=model,
+                            device=device,
+                            image=image_tensor,
+                            caption=class_name,
+                            box_threshold=current_threshold,
+                            text_threshold=0.25
+                        )
+                        filtered_boxes = []
+                        filtered_logits = []
+                        filtered_phrases = []
+                        for i, phrase in enumerate(phrases):
+                            if phrase.lower() == class_name.lower():
+                                filtered_boxes.append(boxes[i])
+                                filtered_logits.append(logits[i])
+                                filtered_phrases.append(phrase)
+                        if filtered_boxes:
+                            filtered_boxes = torch.stack(filtered_boxes)
+                        boxes, logits, phrases = filtered_boxes, filtered_logits, filtered_phrases
+                        # 결과 저장
+                        st.session_state["detection_results"][class_name] = (boxes, logits, phrases)
+                        st.session_state["class_thresholds"][class_name] = current_threshold
+                    if boxes is not None and len(boxes) > 0:
+                        all_boxes.append(boxes)
+                        all_logits.extend(logits)
+                        all_phrases.extend(phrases)
             if all_boxes:
                 all_boxes = torch.cat(all_boxes)
             if all_boxes is not None and len(all_boxes) > 0:
@@ -168,7 +181,6 @@ if st.session_state["file_bytes"] is not None:
             del image_tensor
             gc.collect()
         
-        # 결과가 있다면 표시 및 YOLO 라벨 다운로드 버튼 생성
         if st.session_state["annotated_frame"] is not None:
             st.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
             st.write("### 📋 Detected Objects")
@@ -176,7 +188,7 @@ if st.session_state["file_bytes"] is not None:
                 label = st.session_state["all_phrases"][i]
                 confidence = st.session_state["all_logits"][i]
                 st.write(f"**{label}** - Confidence: {confidence:.2f}")
-            boxes_list = st.session_state["all_boxes"].tolist()  # 각 box: [x_center, y_center, width, height]
+            boxes_list = st.session_state["all_boxes"].tolist()
             yolo_lines = yolo_to_txt(boxes_list, st.session_state["all_phrases"], class_labels)
             yolo_text = "\n".join(yolo_lines)
             file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
