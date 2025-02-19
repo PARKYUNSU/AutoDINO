@@ -107,7 +107,6 @@ if uploaded_file is not None:
         st.session_state["detection_results"] = {}
         st.session_state["class_thresholds"] = {}
 
-# 원본 이미지 및 결과 출력을 위한 placeholder 생성
 image_placeholder = st.empty()
 
 # 객체 검출 및 결과 출력
@@ -118,7 +117,7 @@ if st.session_state["file_bytes"] is not None:
         resized_image = resize_image(original_image.copy(), max_size=(800,800))
         original_array = np.array(resized_image)
         
-        # detection 전이라면 원본(축소된) 이미지를 placeholder에 표시
+        # detection 전에는 원본 이미지를 표시 (placeholder에 표시)
         if not apply_detection and st.session_state["annotated_frame"] is None:
             image_placeholder.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
@@ -137,7 +136,6 @@ if st.session_state["file_bytes"] is not None:
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
-                    # 캐싱: 이전 결과가 있고 임계값이 동일하면 재사용
                     if (st.session_state["detection_results"] is not None and 
                         class_name in st.session_state["detection_results"] and 
                         st.session_state["class_thresholds"].get(class_name) == current_threshold):
@@ -185,10 +183,8 @@ if st.session_state["file_bytes"] is not None:
             del image_tensor
             gc.collect()
         
-        # detection 결과가 준비되면 원본 이미지 placeholder를 비워서 원본 이미지가 사라짐
         if st.session_state["annotated_frame"] is not None:
-            image_placeholder.empty()
-            st.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
+            image_placeholder.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
             st.write("### 📋 Detected Objects")
             for i, box in enumerate(st.session_state["all_boxes"].tolist()):
                 label = st.session_state["all_phrases"][i]
