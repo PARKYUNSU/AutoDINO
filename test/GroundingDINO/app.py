@@ -13,9 +13,9 @@ from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
 def resize_image(image, max_size=(800,800)):
-    image.thumbnail(max_size, Image.Resampling.LANCZOS)
+    image.thumbnail(max_size, Image.Resampling.LANCZO)
     return image
-    
+
 def yolo_to_txt(boxes, phrases, class_names):
     yolo_data = []
     for idx, box in enumerate(boxes):
@@ -114,7 +114,8 @@ if st.session_state["file_bytes"] is not None:
         original_array = np.array(resized_image)
         if not apply_detection and st.session_state["annotated_frame"] is None:
             st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
-    
+        
+        # 모델 입력용 이미지 생성: 축소된 이미지를 사용
         buffer = io.BytesIO()
         resized_image.save(buffer, format="JPEG")
         buffer.seek(0)
