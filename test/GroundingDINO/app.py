@@ -12,6 +12,10 @@ import io
 from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
+def resize_image(image, max_size=(800, 800)):
+    image.thumbnail(max_size, Image.ANTIALIAS)
+    return image
+
 def yolo_to_txt(boxes, phrases, class_names):
     yolo_data = []
     for idx, box in enumerate(boxes):
@@ -105,14 +109,16 @@ if uploaded_file is not None:
 # 객체 검출 및 결과 출력
 if st.session_state["file_bytes"] is not None:
     try:
-        # 원본 이미지 로드 및 표시 (detection 전)
         original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
-        original_array = np.array(original_image)
+        resized_image = resize_image(original_image.copy(), max_size=(800,800))
+        original_array = np.array(resized_image)
         if not apply_detection and st.session_state["annotated_frame"] is None:
             st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
-        
-        # 모델 입력용 이미지 생성
-        image_source, image_tensor = load_image(io.BytesIO(st.session_state["file_bytes"]))
+    
+        buffer = io.BytesIO()
+        resized_image.save(buffer, format="JPEG")
+        buffer.seek(0)
+        image_source, image_tensor = load_image(buffer)
         gc.collect()
         
         # detection 수행 (Apply Detection 버튼 클릭 시 또는 이전 결과가 없으면)
