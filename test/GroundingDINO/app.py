@@ -90,7 +90,6 @@ if class_labels:
 
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
-# 세션 상태 초기화 (필요한 키들)
 for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logits", "all_phrases", "detection_results", "class_thresholds"]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -108,14 +107,20 @@ if uploaded_file is not None:
         st.session_state["detection_results"] = {}
         st.session_state["class_thresholds"] = {}
 
+# 원본 이미지 및 결과 출력을 위한 placeholder 생성
+image_placeholder = st.empty()
+
 # 객체 검출 및 결과 출력
 if st.session_state["file_bytes"] is not None:
     try:
+        # 원본 이미지 로드 및 축소
         original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
         resized_image = resize_image(original_image.copy(), max_size=(800,800))
         original_array = np.array(resized_image)
+        
+        # detection 전이라면 원본(축소된) 이미지를 placeholder에 표시
         if not apply_detection and st.session_state["annotated_frame"] is None:
-            st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
+            image_placeholder.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
         # 모델 입력용 이미지 생성: 축소된 이미지를 사용
         buffer = io.BytesIO()
@@ -124,7 +129,7 @@ if st.session_state["file_bytes"] is not None:
         image_source, image_tensor = load_image(buffer)
         gc.collect()
         
-        # detection 수행 (Apply Detection 버튼 클릭 시 또는 이전 결과가 없으면)
+        # detection 수행 (Apply Detection 버튼 클릭 시 또는 결과가 없으면)
         if apply_detection or st.session_state["annotated_frame"] is None:
             all_boxes = []
             all_logits = []
@@ -132,7 +137,7 @@ if st.session_state["file_bytes"] is not None:
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
-                    # 캐싱: 기존 결과가 있고 임계값이 동일하면 재사용
+                    # 캐싱: 이전 결과가 있고 임계값이 동일하면 재사용
                     if (st.session_state["detection_results"] is not None and 
                         class_name in st.session_state["detection_results"] and 
                         st.session_state["class_thresholds"].get(class_name) == current_threshold):
@@ -157,7 +162,6 @@ if st.session_state["file_bytes"] is not None:
                         if filtered_boxes:
                             filtered_boxes = torch.stack(filtered_boxes)
                         boxes, logits, phrases = filtered_boxes, filtered_logits, filtered_phrases
-                        # 결과 저장
                         st.session_state["detection_results"][class_name] = (boxes, logits, phrases)
                         st.session_state["class_thresholds"][class_name] = current_threshold
                     if boxes is not None and len(boxes) > 0:
@@ -181,7 +185,9 @@ if st.session_state["file_bytes"] is not None:
             del image_tensor
             gc.collect()
         
+        # detection 결과가 준비되면 원본 이미지 placeholder를 비워서 원본 이미지가 사라짐
         if st.session_state["annotated_frame"] is not None:
+            image_placeholder.empty()
             st.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
             st.write("### 📋 Detected Objects")
             for i, box in enumerate(st.session_state["all_boxes"].tolist()):
