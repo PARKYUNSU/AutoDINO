@@ -12,6 +12,16 @@ import io
 from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
+def yolo_to_txt(boxes, phrases, class_names):
+    yolo_data = []
+    for idx, box in enumerate(boxes):
+        class_name = phrases[idx]
+        class_id = class_names.index(class_name) if class_name in class_names else -1
+        if class_id != -1:
+            x_center, y_center, width, height = map(float, box)
+            yolo_data.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+    return yolo_data
+
 # 환경 설정
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
@@ -174,6 +184,18 @@ if st.session_state["file_bytes"] is not None:
                     label = all_phrases[i]
                     confidence = all_logits[i]
                     st.write(f"**{label}** - Confidence: {confidence:.2f}")
+
+                boxes_list = all_boxes.tolist()
+                yolo_lines = yolo_to_txt(boxes_list, all_phrases, class_labels)
+                yolo_text = "\n".join(yolo_lines)
+                file_name = uploaded_file.name if uploaded_file is not None else "detection_results.txt"
+                txt_file_name = f"{os.path.splitext(file_name)[0]}.txt"
+                st.download_button(
+                    label="Download YOLO Labels",
+                    data=yolo_text,
+                    file_name=txt_file_name,
+                    mime="text/plain")                
+
             else:
                 st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
