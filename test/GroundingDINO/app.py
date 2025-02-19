@@ -13,7 +13,7 @@ from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
 def resize_image(image, max_size=(800,800)):
-    image.thumbnail(max_size, Image.Resampling.LANCZO)
+    image.thumbnail(max_size, Image.Resampling.LANCZOS)
     return image
 
 def yolo_to_txt(boxes, phrases, class_names):
