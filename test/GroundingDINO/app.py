@@ -208,18 +208,11 @@ if st.session_state["file_bytes"] is not None:
             st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
     finally:
-        # PyTorch 텐서 해제 전 numpy 변환
-        if "all_boxes" in locals() and isinstance(all_boxes, torch.Tensor):
-            all_boxes = all_boxes.cpu().numpy()
-
-        # Streamlit 세션에 저장되는 PyTorch 텐서를 numpy 및 float로 변환
-        if "all_logits" in locals():
-            all_logits = [float(logit) for logit in all_logits]
-        if "all_phrases" in locals():
-            all_phrases = list(all_phrases)
-
-        # 불필요한 객체 삭제
-        del image_source, image_tensor, all_boxes, all_logits, all_phrases
+        variables_to_delete = ["image_source", "image_tensor", "all_boxes", "all_logits", "all_phrases"]
+    
+        for var in variables_to_delete:
+            if var in locals():
+                del locals()[var]        
         gc.collect()
         torch.cuda.empty_cache()
 
