@@ -103,27 +103,36 @@ if "all_logits" not in st.session_state:
 if "all_phrases" not in st.session_state:
     st.session_state["all_phrases"] = None
 
-# 업로드된 파일이 있으면 파일 bytes와 이름을 세션에 저장 (한번 저장되면 유지)
+# 업로드된 파일이 있으면 파일 bytes와 이름을 세션에 저장 (새 파일이면 캐시 초기화)
 if uploaded_file is not None:
-    if st.session_state["file_bytes"] is None:
-        st.session_state["file_bytes"] = uploaded_file.read()
+    new_file = uploaded_file.read()
+    # 만약 이전에 저장된 파일과 다르다면 캐시 초기화
+    if st.session_state["file_bytes"] != new_file:
+        st.session_state["file_bytes"] = new_file
         st.session_state["file_name"] = uploaded_file.name
+        st.session_state["detection_results"] = {}
+        st.session_state["class_thresholds"] = {}
+        st.session_state["annotated_frame"] = None
+        st.session_state["all_boxes"] = None
+        st.session_state["all_logits"] = None
+        st.session_state["all_phrases"] = None
 
 if st.session_state["file_bytes"] is not None:
     try:
-        # 세션에 저장된 파일 bytes로 원본 이미지 로드
+        # 원본 이미지 로드 (이미 변환한 결과는 캐시할 수 있으니 한 번만 수행)
         original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
         original_array = np.array(original_image)
         
-        # detection 실행 전에는, 만약 detection 결과가 없다면 원본 이미지를 보여줌
+        # detection 전엔, detection 결과가 없으면 원본 이미지 표시
         if not apply_detection and st.session_state["annotated_frame"] is None:
             st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
-        # 모델 입력용 이미지 로드 (image_source, image_tensor)
+        # 모델 입력용 이미지 로드
         image_source, image_tensor = load_image(io.BytesIO(st.session_state["file_bytes"]))
         gc.collect()
 
-        if apply_detection and class_labels:
+        # 만약 Apply Detection이 눌렸다면, 또는 캐시된 결과가 없다면 새로 계산
+        if apply_detection or st.session_state["annotated_frame"] is None:
             all_boxes = []
             all_logits = []
             all_phrases = []
@@ -131,12 +140,11 @@ if st.session_state["file_bytes"] is not None:
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
                     
-                    # 캐시가 존재하고 현재 threshold와 일치하면 재사용
-                    if (class_name in st.session_state["detection_results"] and
+                    # 캐시가 존재하고 threshold가 동일하면 재사용
+                    if (class_name in st.session_state["detection_results"] and 
                         st.session_state["class_thresholds"].get(class_name) == current_threshold):
                         boxes, logits, phrases = st.session_state["detection_results"][class_name]
                     else:
-                        # 해당 클래스에 대해 새로 detection 실행
                         boxes, logits, phrases = predict(
                             model=model,
                             device=device,
@@ -145,7 +153,6 @@ if st.session_state["file_bytes"] is not None:
                             box_threshold=current_threshold,
                             text_threshold=0.25  # 고정 값
                         )
-                        # 클래스 이름과 일치하는 결과만 필터링
                         filtered_boxes = []
                         filtered_logits = []
                         filtered_phrases = []
@@ -157,19 +164,16 @@ if st.session_state["file_bytes"] is not None:
                         if filtered_boxes:
                             filtered_boxes = torch.stack(filtered_boxes)
                         boxes, logits, phrases = filtered_boxes, filtered_logits, filtered_phrases
-                        # 결과와 현재 threshold를 세션에 저장
                         st.session_state["detection_results"][class_name] = (boxes, logits, phrases)
                         st.session_state["class_thresholds"][class_name] = current_threshold
 
-                    # 결과가 존재하면 전체 결과에 추가
                     if boxes is not None and len(boxes) > 0:
                         all_boxes.append(boxes)
                         all_logits.extend(logits)
                         all_phrases.extend(phrases)
-                # 모든 클래스 결과 합치기
                 if all_boxes:
                     all_boxes = torch.cat(all_boxes)
-            
+            # annotate 결과 계산 및 캐싱
             if all_boxes is not None and len(all_boxes) > 0:
                 annotated_frame = annotate(
                     image_source=image_source,
@@ -182,7 +186,8 @@ if st.session_state["file_bytes"] is not None:
                 st.session_state["all_boxes"] = all_boxes
                 st.session_state["all_logits"] = all_logits
                 st.session_state["all_phrases"] = all_phrases
-        # detection 결과가 이미 세션에 있으면 그대로 사용하여 표시
+
+        # 캐시된 결과가 있다면 그대로 사용
         if st.session_state["annotated_frame"] is not None:
             st.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
             st.write("### 📋 Detected Objects")
@@ -190,7 +195,7 @@ if st.session_state["file_bytes"] is not None:
                 label = st.session_state["all_phrases"][i]
                 confidence = st.session_state["all_logits"][i]
                 st.write(f"**{label}** - Confidence: {confidence:.2f}")
-            boxes_list = st.session_state["all_boxes"].tolist()  # 각 box는 [x_center, y_center, width, height]여야 함
+            boxes_list = st.session_state["all_boxes"].tolist()  # [x_center, y_center, width, height]
             yolo_lines = yolo_to_txt(boxes_list, st.session_state["all_phrases"], class_labels)
             yolo_text = "\n".join(yolo_lines)
             file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
@@ -202,7 +207,6 @@ if st.session_state["file_bytes"] is not None:
                 mime="text/plain"
             )
         else:
-            # 만약 detection 결과가 없다면 경고 메시지 표시
             st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
     finally:
