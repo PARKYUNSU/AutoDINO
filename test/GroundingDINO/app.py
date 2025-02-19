@@ -91,7 +91,7 @@ for key in ["file_bytes", "file_name", "annotated_frame", "all_boxes", "all_logi
     if key not in st.session_state:
         st.session_state[key] = None
 
-# 업로드된 파일이 있으면 파일의 bytes와 이름을 세션에 저장 (새 파일이면 캐시 재설정)
+# 업로드된 파일이 있으면 파일의 bytes와 이름 저장 (새 파일이면 캐시 재설정)
 if uploaded_file is not None:
     new_bytes = uploaded_file.getvalue()
     if st.session_state["file_bytes"] != new_bytes:
@@ -102,19 +102,20 @@ if uploaded_file is not None:
         st.session_state["all_logits"] = None
         st.session_state["all_phrases"] = None
 
-# 객체 검출 및 YOLO 라벨 생성
+# 객체 검출 및 결과 출력
 if st.session_state["file_bytes"] is not None:
     try:
-        # 원본 이미지 로드
+        # 원본 이미지 로드 및 표시 (detection 전)
         original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
         original_array = np.array(original_image)
-        # detection 전에는 원본 이미지를 보여줌
         if not apply_detection and st.session_state["annotated_frame"] is None:
             st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
+        
         # 모델 입력용 이미지 생성
         image_source, image_tensor = load_image(io.BytesIO(st.session_state["file_bytes"]))
         gc.collect()
-
+        
+        # detection 수행 (Apply Detection 버튼 클릭 시 또는 이전 결과가 없으면)
         if apply_detection or st.session_state["annotated_frame"] is None:
             all_boxes = []
             all_logits = []
@@ -122,7 +123,6 @@ if st.session_state["file_bytes"] is not None:
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
-                    # 예측 수행
                     boxes, logits, phrases = predict(
                         model=model,
                         device=device,
@@ -131,7 +131,6 @@ if st.session_state["file_bytes"] is not None:
                         box_threshold=current_threshold,
                         text_threshold=0.25
                     )
-                    # 해당 클래스와 일치하는 결과만 필터링
                     filtered_boxes = []
                     filtered_logits = []
                     filtered_phrases = []
@@ -147,7 +146,6 @@ if st.session_state["file_bytes"] is not None:
                         all_phrases.extend(filtered_phrases)
             if all_boxes:
                 all_boxes = torch.cat(all_boxes)
-            # Annotate 결과 생성 및 캐싱 (numpy 배열로 변환)
             if all_boxes is not None and len(all_boxes) > 0:
                 annotated_frame = annotate(
                     image_source=image_source,
@@ -162,8 +160,8 @@ if st.session_state["file_bytes"] is not None:
                 st.session_state["all_phrases"] = all_phrases
             del image_tensor
             gc.collect()
-
-        # 결과가 있으면 표시 및 YOLO 텍스트 파일 다운로드 버튼 추가
+        
+        # 결과가 있다면 표시 및 YOLO 라벨 다운로드 버튼 생성
         if st.session_state["annotated_frame"] is not None:
             st.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
             st.write("### 📋 Detected Objects")
@@ -171,11 +169,9 @@ if st.session_state["file_bytes"] is not None:
                 label = st.session_state["all_phrases"][i]
                 confidence = st.session_state["all_logits"][i]
                 st.write(f"**{label}** - Confidence: {confidence:.2f}")
-            # YOLO 좌표 변환 후 텍스트 생성
             boxes_list = st.session_state["all_boxes"].tolist()  # 각 box: [x_center, y_center, width, height]
             yolo_lines = yolo_to_txt(boxes_list, st.session_state["all_phrases"], class_labels)
             yolo_text = "\n".join(yolo_lines)
-            # 업로드된 파일 이름에서 확장자를 제거하고 .txt 추가
             file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
             txt_file_name = f"{os.path.splitext(file_name)[0]}.txt"
             st.download_button(
