@@ -12,16 +12,6 @@ import io
 from PIL import Image
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 
-def yolo_to_txt(boxes, phrases, class_names):
-    yolo_data = []
-    for idx, box in enumerate(boxes):
-        class_name = phrases[idx]
-        class_id = class_names.index(class_name) if class_name in class_names else -1
-        if class_id != -1:
-            x_center, y_center, width, height = map(float, box)
-            yolo_data.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
-    return yolo_data
-
 # 환경 설정
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
@@ -86,63 +76,53 @@ if class_labels:
 
 apply_detection = st.sidebar.button("🚀 Apply Detection")
 
+# 세션 상태에 업로드 파일의 bytes와 detection 결과 캐싱용 딕셔너리 초기화
 if "file_bytes" not in st.session_state:
     st.session_state["file_bytes"] = None
-if "file_name" not in st.session_state:
-    st.session_state["file_name"] = None
 if "detection_results" not in st.session_state:
     st.session_state["detection_results"] = {}  # { class_name: (boxes, logits, phrases) }
 if "class_thresholds" not in st.session_state:
     st.session_state["class_thresholds"] = {}  # { class_name: threshold }
-if "annotated_frame" not in st.session_state:
-    st.session_state["annotated_frame"] = None
-if "all_boxes" not in st.session_state:
-    st.session_state["all_boxes"] = None
-if "all_logits" not in st.session_state:
-    st.session_state["all_logits"] = None
-if "all_phrases" not in st.session_state:
-    st.session_state["all_phrases"] = None
 
+# 업로드된 파일이 있을 경우: 파일 bytes를 세션에 저장(한번 저장되면 유지)
 if uploaded_file is not None:
-    new_file = uploaded_file.getvalue()
-    if st.session_state["file_bytes"] != new_file:
-        st.session_state["file_bytes"] = new_file
-        st.session_state["file_name"] = uploaded_file.name
-        st.session_state["detection_results"] = {}
-        st.session_state["class_thresholds"] = {}
-        st.session_state["annotated_frame"] = None
-        st.session_state["all_boxes"] = None
-        st.session_state["all_logits"] = None
-        st.session_state["all_phrases"] = None
+    # 파일이 새로 업로드되었거나 세션에 저장된 값이 없으면 업데이트
+    if st.session_state["file_bytes"] is None:
+        st.session_state["file_bytes"] = uploaded_file.read()
+    else:
+        # 업로드 위젯은 매번 새 파일 객체를 반환하므로, 
+        # 파일이 업로드되어 있다면 세션에 저장된 파일을 계속 사용함.
+        pass
 
 if st.session_state["file_bytes"] is not None:
     try:
-        # 원본 이미지 로드 (이미 변환한 결과는 캐시할 수 있으니 한 번만 수행)
+        # 세션에 저장된 파일 bytes를 이용해 원본 이미지를 로드
         original_image = Image.open(io.BytesIO(st.session_state["file_bytes"])).convert("RGB")
         original_array = np.array(original_image)
         
-        # detection 전엔, detection 결과가 없으면 원본 이미지 표시
-        if not apply_detection and st.session_state["annotated_frame"] is None:
+        # detection 실행 전에는 원본 이미지를 보여줌
+        if not apply_detection:
             st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
-        # 모델 입력용 이미지 로드
+        # 모델 입력용 이미지 로드 (이미지 source, image tensor)
         image_source, image_tensor = load_image(io.BytesIO(st.session_state["file_bytes"]))
         gc.collect()
 
-        # 만약 Apply Detection이 눌렸다면, 또는 캐시된 결과가 없다면 새로 계산
-        if apply_detection or st.session_state["annotated_frame"] is None:
-            all_boxes = []
-            all_logits = []
-            all_phrases = []
+        all_boxes = []
+        all_logits = []
+        all_phrases = []
+
+        if apply_detection and class_labels:
             with torch.no_grad():
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
                     
-                    # 캐시가 존재하고 threshold가 동일하면 재사용
-                    if (class_name in st.session_state["detection_results"] and 
+                    # 기존에 저장된 결과와 threshold가 동일하면 재사용
+                    if (class_name in st.session_state["detection_results"] and
                         st.session_state["class_thresholds"].get(class_name) == current_threshold):
                         boxes, logits, phrases = st.session_state["detection_results"][class_name]
                     else:
+                        # 해당 클래스에 대해 새로 detection 실행
                         boxes, logits, phrases = predict(
                             model=model,
                             device=device,
@@ -151,6 +131,7 @@ if st.session_state["file_bytes"] is not None:
                             box_threshold=current_threshold,
                             text_threshold=0.25  # 고정 값
                         )
+                        # 클래스 이름과 일치하는 결과만 필터링
                         filtered_boxes = []
                         filtered_logits = []
                         filtered_phrases = []
@@ -162,16 +143,20 @@ if st.session_state["file_bytes"] is not None:
                         if filtered_boxes:
                             filtered_boxes = torch.stack(filtered_boxes)
                         boxes, logits, phrases = filtered_boxes, filtered_logits, filtered_phrases
+                        # 결과와 현재 threshold를 세션에 저장
                         st.session_state["detection_results"][class_name] = (boxes, logits, phrases)
                         st.session_state["class_thresholds"][class_name] = current_threshold
 
+                    # 결과가 존재하면 전체 결과에 추가
                     if boxes is not None and len(boxes) > 0:
                         all_boxes.append(boxes)
                         all_logits.extend(logits)
                         all_phrases.extend(phrases)
+
+                # 모든 클래스 결과 합치기
                 if all_boxes:
                     all_boxes = torch.cat(all_boxes)
-            # annotate 결과 계산 및 캐싱
+                    
             if all_boxes is not None and len(all_boxes) > 0:
                 annotated_frame = annotate(
                     image_source=image_source,
@@ -181,41 +166,24 @@ if st.session_state["file_bytes"] is not None:
                 )
                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                 
-                # ✅ numpy 배열로 변환하여 Streamlit 세션에 저장 (PyTorch 텐서 방지)
-                st.session_state["annotated_frame"] = annotated_frame
-                st.session_state["all_boxes"] = all_boxes.cpu().numpy()  # ✅ numpy 변환
-                st.session_state["all_logits"] = [float(logit) for logit in all_logits]  # ✅ float 변환
-                st.session_state["all_phrases"] = list(all_phrases)  # ✅ 리스트 변환
+                # detection 결과만 보여줌 (원본 이미지는 더 이상 보이지 않음)
+                st.image(annotated_frame, caption="📸 Detected Objects", use_container_width=True)
+                
+                st.write("### 📋 Detected Objects")
+                for i, box in enumerate(all_boxes):
+                    label = all_phrases[i]
+                    confidence = all_logits[i]
+                    st.write(f"**{label}** - Confidence: {confidence:.2f}")
+            else:
+                st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
-
-        # 캐시된 결과가 있다면 그대로 사용
-        if st.session_state["annotated_frame"] is not None:
-            st.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
-            st.write("### 📋 Detected Objects")
-            for i, box in enumerate(st.session_state["all_boxes"].tolist()):
-                label = st.session_state["all_phrases"][i]
-                confidence = st.session_state["all_logits"][i]
-                st.write(f"**{label}** - Confidence: {confidence:.2f}")
-            boxes_list = st.session_state["all_boxes"].tolist()  # [x_center, y_center, width, height]
-            yolo_lines = yolo_to_txt(boxes_list, st.session_state["all_phrases"], class_labels)
-            yolo_text = "\n".join(yolo_lines)
-            file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
-            txt_file_name = f"{os.path.splitext(file_name)[0]}.txt"
-            st.download_button(
-                label="Download YOLO Labels",
-                data=yolo_text,
-                file_name=txt_file_name,
-                mime="text/plain"
-            )
-        else:
-            st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
+        elif apply_detection and not class_labels:
+            st.warning("⚠️ Please enter at least one object class to detect.")
 
     finally:
-        variables_to_delete = ["image_source", "image_tensor", "all_boxes", "all_logits", "all_phrases"]
-    
-        for var in variables_to_delete:
-            if var in locals():
-                del locals()[var]        
+        for var_name in ["image_source", "image_tensor"]:
+            if var_name in locals():
+                del locals()[var_name]
         gc.collect()
         torch.cuda.empty_cache()
 
