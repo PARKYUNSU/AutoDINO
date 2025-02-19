@@ -103,19 +103,14 @@ if "all_logits" not in st.session_state:
 if "all_phrases" not in st.session_state:
     st.session_state["all_phrases"] = None
 
-# 업로드된 파일이 있으면 파일 bytes와 이름을 세션에 저장 (새 파일이면 캐시 초기화)
 if uploaded_file is not None:
-    new_file = uploaded_file.read()
-    # 만약 이전에 저장된 파일과 다르다면 캐시 초기화
-    if st.session_state["file_bytes"] != new_file:
+    new_file = uploaded_file.getvalue()
+    if "file_bytes" not in st.session_state or st.session_state["file_bytes"] != new_file:
+        # 이전 세션 캐시 초기화
+        st.session_state.clear()
         st.session_state["file_bytes"] = new_file
         st.session_state["file_name"] = uploaded_file.name
-        st.session_state["detection_results"] = {}
-        st.session_state["class_thresholds"] = {}
-        st.session_state["annotated_frame"] = None
-        st.session_state["all_boxes"] = None
-        st.session_state["all_logits"] = None
-        st.session_state["all_phrases"] = None
+
 
 if st.session_state["file_bytes"] is not None:
     try:
@@ -182,10 +177,13 @@ if st.session_state["file_bytes"] is not None:
                     phrases=all_phrases
                 )
                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                
+                # ✅ numpy 배열로 변환하여 Streamlit 세션에 저장 (PyTorch 텐서 방지)
                 st.session_state["annotated_frame"] = annotated_frame
-                st.session_state["all_boxes"] = all_boxes
-                st.session_state["all_logits"] = all_logits
-                st.session_state["all_phrases"] = all_phrases
+                st.session_state["all_boxes"] = all_boxes.cpu().numpy()  # ✅ numpy 변환
+                st.session_state["all_logits"] = [float(logit) for logit in all_logits]  # ✅ float 변환
+                st.session_state["all_phrases"] = list(all_phrases)  # ✅ 리스트 변환
+
 
         # 캐시된 결과가 있다면 그대로 사용
         if st.session_state["annotated_frame"] is not None:
@@ -210,10 +208,20 @@ if st.session_state["file_bytes"] is not None:
             st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
     finally:
-        for var_name in ["image_source", "image_tensor"]:
-            if var_name in locals():
-                del locals()[var_name]
+        # PyTorch 텐서 해제 전 numpy 변환
+        if "all_boxes" in locals() and isinstance(all_boxes, torch.Tensor):
+            all_boxes = all_boxes.cpu().numpy()
+
+        # Streamlit 세션에 저장되는 PyTorch 텐서를 numpy 및 float로 변환
+        if "all_logits" in locals():
+            all_logits = [float(logit) for logit in all_logits]
+        if "all_phrases" in locals():
+            all_phrases = list(all_phrases)
+
+        # 불필요한 객체 삭제
+        del image_source, image_tensor, all_boxes, all_logits, all_phrases
         gc.collect()
         torch.cuda.empty_cache()
+
 else:
     st.info("📌 Upload an image to start detection.")
