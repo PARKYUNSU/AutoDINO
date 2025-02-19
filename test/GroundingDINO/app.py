@@ -89,6 +89,8 @@ apply_detection = st.sidebar.button("🚀 Apply Detection")
 # 세션 상태에 업로드 파일의 bytes와 detection 결과 캐싱용 딕셔너리 초기화
 if "file_bytes" not in st.session_state:
     st.session_state["file_bytes"] = None
+if "file_name" not in st.session_state:
+    st.session_state["file_name"] = None
 if "detection_results" not in st.session_state:
     st.session_state["detection_results"] = {}  # { class_name: (boxes, logits, phrases) }
 if "class_thresholds" not in st.session_state:
@@ -96,9 +98,9 @@ if "class_thresholds" not in st.session_state:
 
 # 업로드된 파일이 있을 경우: 파일 bytes를 세션에 저장(한번 저장되면 유지)
 if uploaded_file is not None:
-    # 파일이 새로 업로드되었거나 세션에 저장된 값이 없으면 업데이트
     if st.session_state["file_bytes"] is None:
         st.session_state["file_bytes"] = uploaded_file.read()
+        st.session_state["file_name"] = uploaded_file.name
     else:
         # 업로드 위젯은 매번 새 파일 객체를 반환하므로, 
         # 파일이 업로드되어 있다면 세션에 저장된 파일을 계속 사용함.
@@ -114,7 +116,7 @@ if st.session_state["file_bytes"] is not None:
         if not apply_detection:
             st.image(original_array, caption="📷 Uploaded Image", use_container_width=True)
         
-        # 모델 입력용 이미지 로드 (이미지 source, image tensor)
+        # 모델 입력용 이미지 로드 (image_source, image_tensor)
         image_source, image_tensor = load_image(io.BytesIO(st.session_state["file_bytes"]))
         gc.collect()
 
@@ -127,7 +129,7 @@ if st.session_state["file_bytes"] is not None:
                 for class_name in class_labels:
                     current_threshold = threshold_values[class_name]
                     
-                    # 기존에 저장된 결과와 threshold가 동일하면 재사용
+                    # 캐시가 존재하고 현재 threshold와 일치하면 재사용
                     if (class_name in st.session_state["detection_results"] and
                         st.session_state["class_thresholds"].get(class_name) == current_threshold):
                         boxes, logits, phrases = st.session_state["detection_results"][class_name]
@@ -161,7 +163,7 @@ if st.session_state["file_bytes"] is not None:
                     if boxes is not None and len(boxes) > 0:
                         all_boxes.append(boxes)
                         all_logits.extend(logits)
-                        all_phrases.extend(phrases)
+                        all_phrases.extend(filtered_phrases if 'filtered_phrases' in locals() else phrases)
 
                 # 모든 클래스 결과 합치기
                 if all_boxes:
@@ -185,17 +187,17 @@ if st.session_state["file_bytes"] is not None:
                     confidence = all_logits[i]
                     st.write(f"**{label}** - Confidence: {confidence:.2f}")
 
-                boxes_list = all_boxes.tolist()
+                boxes_list = all_boxes.tolist()  # 각 box는 [x_center, y_center, width, height]여야 함
                 yolo_lines = yolo_to_txt(boxes_list, all_phrases, class_labels)
                 yolo_text = "\n".join(yolo_lines)
-                file_name = uploaded_file.name if uploaded_file is not None else "detection_results.txt"
+                file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
                 txt_file_name = f"{os.path.splitext(file_name)[0]}.txt"
                 st.download_button(
                     label="Download YOLO Labels",
                     data=yolo_text,
                     file_name=txt_file_name,
-                    mime="text/plain")                
-
+                    mime="text/plain"
+                )                
             else:
                 st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
 
@@ -208,6 +210,5 @@ if st.session_state["file_bytes"] is not None:
                 del locals()[var_name]
         gc.collect()
         torch.cuda.empty_cache()
-
 else:
     st.info("📌 Upload an image to start detection.")
