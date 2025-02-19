@@ -105,12 +105,15 @@ if "all_phrases" not in st.session_state:
 
 if uploaded_file is not None:
     new_file = uploaded_file.getvalue()
-    if "file_bytes" not in st.session_state or st.session_state["file_bytes"] != new_file:
-        # 이전 세션 캐시 초기화
-        st.session_state.clear()
+    if st.session_state["file_bytes"] != new_file:
         st.session_state["file_bytes"] = new_file
         st.session_state["file_name"] = uploaded_file.name
-
+        st.session_state["detection_results"] = {}
+        st.session_state["class_thresholds"] = {}
+        st.session_state["annotated_frame"] = None
+        st.session_state["all_boxes"] = None
+        st.session_state["all_logits"] = None
+        st.session_state["all_phrases"] = None
 
 if st.session_state["file_bytes"] is not None:
     try:
