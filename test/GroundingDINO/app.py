@@ -187,6 +187,5 @@ if st.session_state["file_bytes"] is not None:
             if var_name in locals():
                 del locals()[var_name]
         gc.collect()
-        torch.cuda.empty_cache()
 else:
     st.info("📌 Upload an image to start detection.")
