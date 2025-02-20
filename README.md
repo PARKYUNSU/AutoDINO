@@ -13,7 +13,7 @@
 
 ---
 
-**AutoDINO** is a project that automatically annotates and labels objects in images using the Grounding DINO model.
+**AutoDINO** is a App that automatically annotates and labels objects in images using the Grounding DINO model.
 It is deployed as a Streamlit web application, allowing users to easily upload images and receive labeled annotations.
 
 
