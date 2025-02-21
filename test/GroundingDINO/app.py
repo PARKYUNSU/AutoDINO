@@ -180,16 +180,41 @@ if st.session_state["file_bytes"] is not None:
                     annotated_frame = annotate(image_source, all_boxes, all_logits, all_phrases)
                     annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                     st.session_state["annotated_frame"] = annotated_frame
-
-            # Detection 완료 후, 상태 리셋
+                    st.session_state["all_boxes"] = all_boxes.cpu().numpy()
+                    st.session_state["all_logits"] = [float(x) for x in all_logits]
+                    st.session_state["all_phrases"] = all_phrases
             st.session_state["detection_trigger"] = False
+            del image_tensor
+            gc.collect()
 
         # Detection 결과 표시
         if st.session_state["annotated_frame"] is not None:
             image_placeholder.image(st.session_state["annotated_frame"], caption="📸 Detected Objects", use_container_width=True)
-
+            st.write("### 📋 Detected Objects")
+            for i, box in enumerate(st.session_state["all_boxes"].tolist()):
+                label = st.session_state["all_phrases"][i]
+                confidence = st.session_state["all_logits"][i]
+                st.write(f"**{label}** - Confidence: {confidence:.2f}")
+            # YOLO 라벨 변환 및 다운로드 버튼
+            if st.session_state["all_boxes"] is not None and st.session_state["all_phrases"] is not None:
+                boxes_list = st.session_state["all_boxes"].tolist()
+                yolo_lines = yolo_to_txt(boxes_list, st.session_state["all_phrases"], class_labels)
+                yolo_text = "\n".join(yolo_lines)
+                file_name = st.session_state["file_name"] if st.session_state["file_name"] is not None else "detection_results.txt"
+                txt_file_name = f"{os.path.splitext(file_name)[0]}.txt"
+                st.download_button(
+                    label="Download YOLO Labels",
+                    data=yolo_text,
+                    file_name=txt_file_name,
+                    mime="text/plain"
+                )
+        else:
+            st.warning("❌ No objects detected. Try adjusting the confidence threshold.")
     finally:
+        try:
+            del image_source, image_tensor
+        except NameError:
+            pass
         gc.collect()
-
 else:
     st.info("📌 Upload an image to start detection.")
