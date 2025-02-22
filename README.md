@@ -17,6 +17,13 @@
 It is deployed as a Streamlit web application, allowing users to easily upload images and receive labeled annotations.
 
 
+## Shortest
+
+AutoDINO Live Demo
+
+https://github.com/user-attachments/assets/781c3756-4277-4f99-acdc-ac39a8f34176
+
+
 ##  Features
 
 1. Automatic Mutiple Object Detection & Labeling powered by Grounding DINO
